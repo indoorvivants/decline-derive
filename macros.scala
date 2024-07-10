@@ -6,10 +6,22 @@ import scala.deriving.*
 import scala.quoted.*
 import cats.kernel.Semigroup
 
-trait Hint[T]
+// trait Hints[T]
 
-object Hints:
-  case object Name extends Hint[String]
+// object Hints:
+//   case object Name extends Hints[String]
+
+enum ArgHint:
+  case Name(value: String)
+  case Help(value: String)
+  case FlagDefault(value: Boolean)
+
+class arg(val hints: ArgHint*) extends annotation.StaticAnnotation
+
+enum CmdHint:
+  case Name(value: String)
+
+class cmd(val name: CmdHint) extends annotation.StaticAnnotation
 
 trait CommandApplication[T]:
   val opt: Command[T]
@@ -67,7 +79,6 @@ object CommandApplication:
               type MirroredLabel = commandName
             }
           } =>
-        // println(m.show)
         val elemInstances = summonInstances[T, elementTypes]
         val elements = Expr.ofList(elemInstances)
 
@@ -84,19 +95,6 @@ object CommandApplication:
           }
         }
 
-      // elemInstances.reduce:
-      //   (l, r) =>
-      //     '{Opts.subcommand}
-
-      // val subcommands =
-      //   elemInstances.map: cmd =>
-      //     '{}
-
-      // println(summonLabels[labels].map(_.show))
-
-      // val subcommands =
-      //   summonLabels
-
       case '{
             $m: Mirror.ProductOf[T] {
               type MirroredElemTypes = elementTypes;
@@ -106,28 +104,85 @@ object CommandApplication:
           } =>
         val name = getString[commandName]
 
-        def fieldOpts[T: Type, L: Type]: List[Expr[Opts[?]]] =
+        val argAnnot = TypeRepr.of[arg].typeSymbol
+
+        val t = TypeRepr
+          .of[T]
+          .typeSymbol
+          .primaryConstructor
+          .paramSymss
+          .flatten
+          .map: sym =>
+            if sym.hasAnnotation(argAnnot) then
+              val fieldNameExpr = Expr(sym.name.asInstanceOf[String])
+              val annotExpr = sym.getAnnotation(argAnnot).get.asExprOf[arg]
+              Some(annotExpr)
+            else None
+
+        def fieldOpts[T: Type, L: Type](
+            annots: List[Option[Expr[arg]]]
+        ): List[Expr[Opts[?]]] =
           (Type.of[T], Type.of[L]) match
             case ('[elem *: elems], '[elemLabel *: elemLabels]) =>
               val nm = getString[elemLabel]
+              val a = annots.head
+
+              inline def getHint[T: Type](
+                  inline f: PartialFunction[ArgHint, T]
+              ): Expr[Option[T]] =
+                a match
+                  case None => Expr(None)
+                  case Some(e) =>
+                    '{ $e.hints.collectFirst(f) }
+
+              val nameOverride = getHint:
+                case ArgHint.Name(v) => v
+
+              val help =
+                val configured = getHint:
+                  case ArgHint.Help(v) => v
+
+                '{ $configured.getOrElse("") }
+
+              val name = '{ $nameOverride.getOrElse($nm) }
 
               Type.of[elem] match
-                case '[String] =>
-                  '{ Opts.option[String]($nm, "???") } :: fieldOpts[
-                    elems,
-                    elemLabels
-                  ]
+                case '[e] =>
+                  val argument = Expr.summon[Argument[e]]
+
+                  argument match
+                    case None =>
+                      val tpe = TypeRepr.of[e].show
+                      report.errorAndAbort(
+                        s"No instance of `Argument` typeclass was found for type `$tpe`, which is type of field `${nm.valueOrAbort}`"
+                      )
+                    case Some(value) =>
+                      '{
+                        given Argument[e] = $value
+                        Opts.option[e]($name, $help)
+                      }
+                        :: fieldOpts[
+                          elem,
+                          elemLabels
+                        ](annots.tail)
+
                 case '[Boolean] =>
+                  val flagOverride =
+                    getHint:
+                      case ArgHint.FlagDefault(value) => value
+
                   '{
-                    Opts.flag($nm, "???").orFalse
+                    $flagOverride match
+                      case None        => Opts.flag($name, $help).orFalse
+                      case Some(value) => Opts.flag($name, $help).orTrue
                   } :: fieldOpts[
                     elems,
                     elemLabels
-                  ]
+                  ](annots.tail)
 
-            case ('[EmptyTuple], '[EmptyTuple]) => Nil
+            case _ => Nil
 
-        val opts = Expr.ofList(fieldOpts[elementTypes, labels])
+        val opts = Expr.ofList(fieldOpts[elementTypes, labels](t))
 
         val combined = '{
           $opts
