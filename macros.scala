@@ -21,8 +21,9 @@ class arg(val hints: ArgHint*) extends annotation.StaticAnnotation
 
 enum CmdHint:
   case Name(value: String)
+  case Help(value: String)
 
-class cmd(val name: CmdHint) extends annotation.StaticAnnotation
+class cmd(val hints: CmdHint*) extends annotation.StaticAnnotation
 
 trait CommandApplication[T]:
   val opt: Command[T]
@@ -72,6 +73,23 @@ object CommandApplication:
 
     import quotes.reflect.*
 
+    val cmdAnnot = TypeRepr.of[cmd]
+    val annots = TypeRepr
+      .of[T]
+      .typeSymbol
+      .annotations
+      .collectFirst:
+        case term if term.tpe =:= cmdAnnot => term.asExprOf[cmd]
+
+    inline def getHint[T: Type](
+        inline f: PartialFunction[CmdHint, T]
+    ): Expr[Option[T]] =
+      annots match
+        case None => Expr(None)
+        case Some(e) =>
+          '{ $e.hints.collectFirst(f) }
+    end getHint
+
     ev match
       case '{
             $m: Mirror.SumOf[T] {
@@ -89,10 +107,21 @@ object CommandApplication:
           $elements.map(_.opt).map(Opts.subcommand(_)).reduce(_ orElse _)
         }
 
+        val nameOverride =
+          getHint:
+            case CmdHint.Name(value) => value
+
+        val helpOverride =
+          getHint:
+            case CmdHint.Help(value) => value
+
         '{
           new CommandApplication[T] {
             override val opt: Command[T] =
-              Command($command.toLowerCase(), "???")($subcommands.asInstanceOf)
+              Command(
+                $nameOverride.getOrElse($command.toLowerCase()),
+                $helpOverride.getOrElse("")
+              )($subcommands.asInstanceOf)
           }
         }
 
@@ -209,10 +238,21 @@ object CommandApplication:
             .map($m.fromProduct)
         }
 
+        val nameOverride =
+          getHint:
+            case CmdHint.Name(value) => value
+
+        val helpOverride =
+          getHint:
+            case CmdHint.Help(value) => value
+
         '{
           new CommandApplication[T] {
             override val opt: Command[T] =
-              Command[T]($name.toLowerCase(), "???")($combined)
+              Command[T](
+                $nameOverride.getOrElse($name.toLowerCase()),
+                $helpOverride.getOrElse("")
+              )($combined)
           }
         }
 
