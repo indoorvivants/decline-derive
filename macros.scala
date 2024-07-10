@@ -13,6 +13,7 @@ import cats.kernel.Semigroup
 
 enum ArgHint:
   case Name(value: String)
+  case Short(value: String)
   case Help(value: String)
   case FlagDefault(value: Boolean)
 
@@ -134,9 +135,13 @@ object CommandApplication:
                   case None => Expr(None)
                   case Some(e) =>
                     '{ $e.hints.collectFirst(f) }
+              end getHint
 
               val nameOverride = getHint:
                 case ArgHint.Name(v) => v
+
+              val shortOverride = getHint:
+                case ArgHint.Short(v) => v
 
               val help =
                 val configured = getHint:
@@ -146,25 +151,30 @@ object CommandApplication:
 
               val name = '{ $nameOverride.getOrElse($nm) }
 
-              Type.of[elem] match
-                case '[e] =>
-                  val argument = Expr.summon[Argument[e]]
+              def constructArg[E: Type] =
+                val argument = Expr.summon[Argument[E]]
 
-                  argument match
-                    case None =>
-                      val tpe = TypeRepr.of[e].show
-                      report.errorAndAbort(
-                        s"No instance of `Argument` typeclass was found for type `$tpe`, which is type of field `${nm.valueOrAbort}`"
+                argument match
+                  case None =>
+                    val tpe = TypeRepr.of[E].show
+                    report.errorAndAbort(
+                      s"No instance of `Argument` typeclass was found for type `$tpe`, which is type of field `${nm.valueOrAbort}`"
+                    )
+                  case Some(value) =>
+                    '{
+                      given Argument[E] = $value
+                      Opts.option[E](
+                        $name,
+                        $help,
+                        short = $shortOverride.getOrElse("")
                       )
-                    case Some(value) =>
-                      '{
-                        given Argument[e] = $value
-                        Opts.option[e]($name, $help)
-                      }
-                        :: fieldOpts[
-                          elem,
-                          elemLabels
-                        ](annots.tail)
+                    }
+              end constructArg
+
+              Type.of[elem] match
+                case '[Option[e]] =>
+                  val raw = constructArg[e]
+                  '{ $raw.orNone } :: fieldOpts[elem, elemLabels](annots.tail)
 
                 case '[Boolean] =>
                   val flagOverride =
@@ -180,7 +190,14 @@ object CommandApplication:
                     elemLabels
                   ](annots.tail)
 
-            case _ => Nil
+                case '[e] =>
+                  constructArg[e] :: fieldOpts[
+                    elems,
+                    elemLabels
+                  ](annots.tail)
+
+            case other =>
+              Nil
 
         val opts = Expr.ofList(fieldOpts[elementTypes, labels](t))
 

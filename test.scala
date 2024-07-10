@@ -1,11 +1,14 @@
 package decline_derive
 
+import ArgHint.*
 enum MyCLI derives CommandApplication:
   case Index(
       @arg(
-        ArgHint.Name("other-location"),
-        ArgHint.Help("location of index file")
-      ) location: String
+        Name("index-location"),
+        Short("l"),
+        Help("location of index file")
+      ) location: String,
+      language: Option[String]
   )
   case Search(location: String, repl: Boolean)
   case Test(bla: Int)
@@ -13,5 +16,5 @@ enum MyCLI derives CommandApplication:
 @main def hello =
   println(
     summon[CommandApplication[MyCLI]].opt
-      .parse(Seq("test", "--bla", "150"))
+      .parse(Seq("index", "--language", "java"))
   )
