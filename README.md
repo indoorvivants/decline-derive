@@ -5,13 +5,20 @@
   - [Installation](#installation)
   - [Getting started](#getting-started)
   - [Contributing](#contributing)
-  <!--toc:end-->
+<!--toc:end-->
 
-An _experimental_ [Smithy4s](https://disneystreaming.github.io/smithy4s/) client backend for [Scala.js](https://www.scala-js.org/), utilising [Fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch) directly, without introducing a http4s/cats dependency.
+Experimental library to quickly derive [Decline](https://ben.kirw.in/decline/) CLI 
+interfaces, to quickly prototype CLI applications. 
 
-The purpose of this library is to provide users of Smithy4s backend services a more lightweight client for the frontend – if your Scala.js frontend is not using Cats/Cats-Effect based libraries, you can communicate with your Smithy4s backend directly using Fetch, **reducing bundle size by as much as 50% in some instances**.
+It is driven by types (with `enum`s and `case classes` representing groups of subcommands and groups of parameters respectively, see example below), and can handle anything Decline has built-in support for, and some extra handling of `Option[..]` and `List[..]` types. The library is inspired by [clap from Rust](https://docs.rs/clap/latest/clap/index.html), but mainly because it's the most recent example I came across - deriving CLI parsers with macros is a long standing tradition in Scala.
 
-The library is currently only available for Scala 3, but we will welcome contributions cross-compiling it to 2.13 – it should be very easy. API surface is very minimal and designed for binary compatible evolution, so after initial round of testing and gathering community feedback, we plan to release 1.0.0 and start checking binary/Tasty compatibility for each release.
+This library does not aim to cover every possible case representable with Decline - in fact
+in only covers the most basic of cases.
+For complicated CLIs I would still recommend using the approach that Decline library recommends.
+
+Acknowledgements:
+- [August Nagro's post on how to read annotations from macros](https://august.nagro.us/read-annotations-from-macro.html)
+- [Scala 3 documentation page on macro-driven derivation](https://dotty.epfl.ch/docs/reference/contextual/derivation-macro.htm:)
 
 ## Installation
 
@@ -34,17 +41,27 @@ enum CLI derives CommandApplication:
     println(CommandApplication.parse[CLI](args))
 ```
 
+Notice how we're using `@arg(_.Name("lit"))` to customise certain aspects of 
+generated Decline parser.
+
+For more configuration options, see [tests]("./library.test.scala"), [ArgHint]("./ArgHint.scala"), [CmdHint]("./CmdHint.scala") and [annotations]("./annotations.scala").
+
 ## Contributing
 
-If you see something that can be improved in this library – please contribute!
+If you see something that can be improved in this library – please contribute! 
+Turning users into contributors and maintainers is one of the purest joys of OSS.
 
-This is a relatively standard Scala CLI project, even though the tests run a 
-Scala version newer than the library itself (library is published for 3.3, tests are 
-in 3.4, to make use of smithy4s-deriving).
+This library was largely put together on board of a plane during a very short flight,
+so it cuts a lot of corners when it comes to performance of generated code - mainly 
+because I didn't use 
+
+This is a standard Scala CLI project, with a Makefile for some useful commands.
 
 Here are some useful commands:
 
-- `make test` – run tests
+- `make test` – run tests. Note that this command runs tests for all three platforms - 
+    which might be unnecessarily slow for development purposes. Quickest feedback loop 
+    is achieved by just running `scala-cli test *.scala`
 - `make check-docs` – verify that snippets in `README.md` (this file) compile
 - `make pre-ci` – format the code so that it passes CI check
-- `make run-example` – run example from README against real https://httpbin.org
+- `make run-example` – run example from README
