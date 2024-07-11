@@ -22,7 +22,7 @@ Acknowledgements:
 
 ## Installation
 
-Latest version: [![decline-derive Scala version support](https://index.scala-lang.org/neandertech/decline-derive/decline-derive/latest.svg)](https://index.scala-lang.org/neandertech/decline-derive/decline-derive)
+Latest version: [![decline-derive Scala version support](https://index.scala-lang.org/indoorvivants/decline-derive/decline-derive/latest.svg)](https://index.scala-lang.org/indoorvivants/decline-derive/decline-derive)
 
 - **SBT**: `libraryDependencies += "com.indoorvivants" %%% "decline-derive" % "<latest version>"`
 - **Scala CLI**: `//> using dep com.indoorvivants::decline-derive::<latest version>`
