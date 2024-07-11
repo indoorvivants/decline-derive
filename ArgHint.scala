@@ -5,5 +5,5 @@ enum ArgHint:
   case Short(value: String)
   case Help(value: String)
   case FlagDefault(value: Boolean)
-  case Argument(metavar: String | Option[String] = None)
+  case Positional(metavar: String | Option[String] = None)
 end ArgHint

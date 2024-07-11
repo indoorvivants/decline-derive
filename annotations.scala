@@ -7,4 +7,3 @@ class arg(val hints: (ArgHint.type => ArgHint)*)
 class cmd(val hints: (CmdHint.type => CmdHint)*)
     extends annotation.StaticAnnotation:
   private[decline_derive] def getHints = hints.map(_(CmdHint))
-

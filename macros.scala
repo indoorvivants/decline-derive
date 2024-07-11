@@ -210,7 +210,7 @@ private[decline_derive] object Macros:
         '{
           given ClassTag[e] = $ct
           ${ constructOption[List[e]](name, hints) }
-            .map(_.asInstanceOf[List[e]].toArray())
+            .map(_.asInstanceOf[List[e]].toArray)
         }
 
       case '[e] =>

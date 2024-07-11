@@ -18,5 +18,4 @@ private[decline_derive] case class CmdHintProvider(e: Expr[Seq[CmdHint]]):
     getHint:
       case CmdHint.Help(value) => value
 
-
 end CmdHintProvider
