@@ -20,14 +20,14 @@ jobs:
         with:
           power: true
 
-      # - name: Check formatting
-      #   run: make code-check || echo "Run `make pre-ci`"
+      - name: Check formatting
+        run: make code-check || echo "Run `make pre-ci`"
 
-      # - name: Test 
-      #   run: make test
+      - name: Test 
+        run: make test
 
-      # - name: Check documentation compiles and runs
-      #   run: make check-docs && make run-example
+      - name: Check documentation compiles and runs
+        run: make check-docs && make run-example
 
       - name: Publish snapshot 
         if: github.ref == 'refs/heads/main'
