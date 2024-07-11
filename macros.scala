@@ -153,9 +153,20 @@ private[decline_derive] object Macros:
       case '[Boolean] =>
         '{
           ${ hints.flag } match
-            case None => Opts.flag($name, ${ hints.help }.getOrElse("")).orFalse
+            case None =>
+              Opts
+                .flag(
+                  ${ hints.name }.getOrElse($name),
+                  ${ hints.help }.getOrElse("")
+                )
+                .orFalse
             case Some(value) =>
-              Opts.flag($name, ${ hints.help }.getOrElse("")).orTrue
+              Opts
+                .flag(
+                  ${ hints.name }.getOrElse($name),
+                  ${ hints.help }.getOrElse("")
+                )
+                .orTrue
         }
 
       case '[Option[e]] =>
