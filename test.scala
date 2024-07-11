@@ -1,21 +1,20 @@
 package decline_derive
 
-import ArgHint.*
-
-@cmd(CmdHint.Name("my-cli"))
+@cmd(_.Name("my-cli"))
 enum MyCLI derives CommandApplication:
   case Index(
       @arg(
-        Name("index"),
-        Short("l"),
-        Help("location of index file")
+        _.Name("index"),
+        _.Short("l"),
+        _.Help("location of index file")
       ) location: String,
-      language: Option[String]
+      language: Option[String],
+      things: Option[List[String]]
   )
 
-  @cmd(CmdHint.Name("search")) case Search(location: String, repl: Boolean)
+  @cmd(_.Name("search")) case Search(location: String, repl: Boolean)
 
-  @cmd(CmdHint.Name("test-me"), CmdHint.Help("this tests stuff")) //
+  @cmd(_.Name("test-me"), _.Help("this tests stuff")) //
   case Test(
       bla: Int
   )
@@ -26,14 +25,7 @@ case class Stuff(flag: Int, location: Option[String]) derives CommandApplication
   println(
     summon[CommandApplication[MyCLI]].opt
       .parse(
-        // Seq("index", "--index-location", "index.trig", "--language", "scala")
-        Seq("--help")
-      )
-  )
-
-  println(
-    summon[CommandApplication[Stuff]].opt
-      .parse(
-        Seq("--help")
+        Seq("index", "--help")
+        // Seq("--help")
       )
   )

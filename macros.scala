@@ -1,36 +1,13 @@
 package decline_derive
 
-import com.monovore.decline.*
-import compiletime.*
-import scala.deriving.*
-import scala.quoted.*
-import cats.kernel.Semigroup
+import deriving.*, quoted.*, compiletime.*
+import com.monovore.decline.Opts
+import com.monovore.decline.Command
+import com.monovore.decline.Argument
+import cats.data.NonEmptyList
+import scala.reflect.ClassTag
 
-// trait Hints[T]
-
-// object Hints:
-//   case object Name extends Hints[String]
-
-enum ArgHint:
-  case Name(value: String)
-  case Short(value: String)
-  case Help(value: String)
-  case FlagDefault(value: Boolean)
-
-class arg(val hints: ArgHint*) extends annotation.StaticAnnotation
-
-enum CmdHint:
-  case Name(value: String)
-  case Help(value: String)
-
-class cmd(val hints: CmdHint*) extends annotation.StaticAnnotation
-
-trait CommandApplication[T]:
-  val opt: Command[T]
-
-object CommandApplication:
-  inline def derived[T](using Mirror.Of[T]): CommandApplication[T] =
-    ${ derivedMacro[T] }
+private[decline_derive] object Macros:
 
   def summonInstances[T: Type, Elems: Type](using
       Quotes
@@ -46,7 +23,6 @@ object CommandApplication:
         val expr = Expr.summon[ValueOf[elem]].get
 
         '{ $expr.value.asInstanceOf[String] } :: summonLabels[elems]
-      // scala.compiletime.constValue[elem]
       case '[EmptyTuple] => Nil
 
   def deriveOrSummon[T: Type, Elem: Type](using
@@ -68,7 +44,7 @@ object CommandApplication:
       case '{ $v } =>
         '{ $v.value.asInstanceOf[String] }
 
-  private def derivedMacro[T: Type](using Quotes): Expr[CommandApplication[T]] =
+  def derivedMacro[T: Type](using Quotes): Expr[CommandApplication[T]] =
     val ev: Expr[Mirror.Of[T]] = Expr.summon[Mirror.Of[T]].get
 
     import quotes.reflect.*
@@ -80,15 +56,11 @@ object CommandApplication:
       .annotations
       .collectFirst:
         case term if term.tpe =:= cmdAnnot => term.asExprOf[cmd]
+      .match
+        case None    => '{ Seq.empty[CmdHint] }
+        case Some(e) => '{ $e.getHints }
 
-    inline def getHint[T: Type](
-        inline f: PartialFunction[CmdHint, T]
-    ): Expr[Option[T]] =
-      annots match
-        case None => Expr(None)
-        case Some(e) =>
-          '{ $e.hints.collectFirst(f) }
-    end getHint
+    val hints = CmdHintProvider(annots)
 
     ev match
       case '{
@@ -107,22 +79,13 @@ object CommandApplication:
           $elements.map(_.opt).map(Opts.subcommand(_)).reduce(_ orElse _)
         }
 
-        val nameOverride =
-          getHint:
-            case CmdHint.Name(value) => value
-
-        val helpOverride =
-          getHint:
-            case CmdHint.Help(value) => value
-
         '{
-          new CommandApplication[T] {
+          new CommandApplication[T]:
             override val opt: Command[T] =
               Command(
-                $nameOverride.getOrElse($command.toLowerCase()),
-                $helpOverride.getOrElse("")
+                ${ hints.name }.getOrElse($command.toLowerCase()),
+                ${ hints.help }.getOrElse("")
               )($subcommands.asInstanceOf)
-          }
         }
 
       case '{
@@ -144,89 +107,9 @@ object CommandApplication:
           .flatten
           .map: sym =>
             if sym.hasAnnotation(argAnnot) then
-              val fieldNameExpr = Expr(sym.name.asInstanceOf[String])
               val annotExpr = sym.getAnnotation(argAnnot).get.asExprOf[arg]
               Some(annotExpr)
             else None
-
-        def fieldOpts[T: Type, L: Type](
-            annots: List[Option[Expr[arg]]]
-        ): List[Expr[Opts[?]]] =
-          (Type.of[T], Type.of[L]) match
-            case ('[elem *: elems], '[elemLabel *: elemLabels]) =>
-              val nm = getString[elemLabel]
-              val a = annots.head
-
-              inline def getHint[T: Type](
-                  inline f: PartialFunction[ArgHint, T]
-              ): Expr[Option[T]] =
-                a match
-                  case None => Expr(None)
-                  case Some(e) =>
-                    '{ $e.hints.collectFirst(f) }
-              end getHint
-
-              val nameOverride = getHint:
-                case ArgHint.Name(v) => v
-
-              val shortOverride = getHint:
-                case ArgHint.Short(v) => v
-
-              val help =
-                val configured = getHint:
-                  case ArgHint.Help(v) => v
-
-                '{ $configured.getOrElse("") }
-
-              val name = '{ $nameOverride.getOrElse($nm) }
-
-              def constructArg[E: Type] =
-                val argument = Expr.summon[Argument[E]]
-
-                argument match
-                  case None =>
-                    val tpe = TypeRepr.of[E].show
-                    report.errorAndAbort(
-                      s"No instance of `Argument` typeclass was found for type `$tpe`, which is type of field `${nm.valueOrAbort}`"
-                    )
-                  case Some(value) =>
-                    '{
-                      given Argument[E] = $value
-                      Opts.option[E](
-                        $name,
-                        $help,
-                        short = $shortOverride.getOrElse("")
-                      )
-                    }
-              end constructArg
-
-              Type.of[elem] match
-                case '[Option[e]] =>
-                  val raw = constructArg[e]
-                  '{ $raw.orNone } :: fieldOpts[elem, elemLabels](annots.tail)
-
-                case '[Boolean] =>
-                  val flagOverride =
-                    getHint:
-                      case ArgHint.FlagDefault(value) => value
-
-                  '{
-                    $flagOverride match
-                      case None        => Opts.flag($name, $help).orFalse
-                      case Some(value) => Opts.flag($name, $help).orTrue
-                  } :: fieldOpts[
-                    elems,
-                    elemLabels
-                  ](annots.tail)
-
-                case '[e] =>
-                  constructArg[e] :: fieldOpts[
-                    elems,
-                    elemLabels
-                  ](annots.tail)
-
-            case other =>
-              Nil
 
         val opts = Expr.ofList(fieldOpts[elementTypes, labels](t))
 
@@ -238,22 +121,142 @@ object CommandApplication:
             .map($m.fromProduct)
         }
 
-        val nameOverride =
-          getHint:
-            case CmdHint.Name(value) => value
-
-        val helpOverride =
-          getHint:
-            case CmdHint.Help(value) => value
-
         '{
-          new CommandApplication[T] {
+          new CommandApplication[T]:
             override val opt: Command[T] =
               Command[T](
-                $nameOverride.getOrElse($name.toLowerCase()),
-                $helpOverride.getOrElse("")
+                ${ hints.name }.getOrElse($name.toLowerCase()),
+                ${ hints.help }.getOrElse("")
               )($combined)
-          }
+        }
+    end match
+  end derivedMacro
+
+  def summonArgument[E: Type](fieldName: Expr[String])(using Quotes) =
+    import quotes.reflect.*
+    Expr
+      .summon[Argument[E]]
+      .getOrElse:
+        val tpe = TypeRepr.of[E].show
+        report.errorAndAbort(
+          s"No instance of `Argument` typeclass was found for type `$tpe`, which is type of field `${fieldName.show}`"
+        )
+  end summonArgument
+
+  def constructOption[E: Type](
+      name: Expr[String],
+      hints: ArgHintProvider
+  )(using Quotes): Expr[Opts[Any]] =
+    import quotes.reflect.*
+
+    Type.of[E] match
+      case '[Boolean] =>
+        '{
+          ${ hints.flag } match
+            case None => Opts.flag($name, ${ hints.help }.getOrElse("")).orFalse
+            case Some(value) =>
+              Opts.flag($name, ${ hints.help }.getOrElse("")).orTrue
         }
 
-case class CommandDefinition[T](label: String, opts: Opts[T])
+      case '[Option[e]] =>
+        '{ ${ constructOption[e](name, hints) }.orNone }
+
+      case '[NonEmptyList[e]] =>
+        val param = summonArgument[e](name)
+
+        '{
+          given Argument[e] = $param
+
+          ${ hints.isArgument } match
+            case None =>
+              Opts.options[e](
+                ${ hints.name }.getOrElse($name),
+                ${ hints.help }.getOrElse(""),
+                short = ${ hints.short }.getOrElse("")
+              )
+
+            case Some(value) =>
+              Opts.arguments[e](metavar = value.getOrElse(""))
+          end match
+        }
+
+      case '[List[e]] =>
+        '{
+          ${ constructOption[NonEmptyList[e]](name, hints) }
+            .map(_.asInstanceOf[NonEmptyList[e]].toList)
+        }
+
+      case '[Set[e]] =>
+        '{
+          ${ constructOption[List[e]](name, hints) }
+            .map(_.asInstanceOf[List[e]].toSet)
+        }
+
+      case '[Vector[e]] =>
+        '{
+          ${ constructOption[List[e]](name, hints) }
+            .map(_.asInstanceOf[List[e]].toVector)
+        }
+
+      case '[Array[e]] =>
+        val ct = Expr
+          .summon[ClassTag[e]]
+          .getOrElse(
+            report.errorAndAbort(
+              s"No ClassTag available for ${TypeRepr.of[e].show}"
+            )
+          )
+
+        '{
+          given ClassTag[e] = $ct
+          ${ constructOption[List[e]](name, hints) }
+            .map(_.asInstanceOf[List[e]].toArray())
+        }
+
+      case '[e] =>
+        val param = summonArgument[E](name)
+
+        '{
+          given Argument[E] = $param
+
+          ${ hints.isArgument } match
+            case None =>
+              Opts.option[E](
+                ${ hints.name }.getOrElse($name),
+                ${ hints.help }.getOrElse(""),
+                short = ${ hints.short }.getOrElse("")
+              )
+
+            case Some(value) =>
+              Opts.argument[E](metavar = value.getOrElse(""))
+          end match
+
+        }
+      case _ =>
+        report.errorAndAbort(
+          s"Don't know how to handle type ${TypeRepr.of[E].show}"
+        )
+    end match
+  end constructOption
+
+  def fieldOpts[T: Type, L: Type](
+      annots: List[Option[Expr[arg]]]
+  )(using Quotes): List[Expr[Opts[?]]] =
+    (Type.of[T], Type.of[L]) match
+      case ('[elem *: elems], '[elemLabel *: elemLabels]) =>
+        val nm = getString[elemLabel]
+        val a = annots.head match
+          case None        => '{ Seq.empty[ArgHint] }
+          case Some(value) => '{ $value.getHints }
+
+        val hints = ArgHintProvider(a)
+
+        constructOption[elem](nm, hints) ::
+          fieldOpts[elems, elemLabels](
+            annots.tail
+          )
+
+      case other =>
+        Nil
+  end fieldOpts
+end Macros
