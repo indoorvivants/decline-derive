@@ -76,19 +76,21 @@ private[decline_derive] object Macros:
         val command = getString[commandName]
 
         val derivedSubcommands = '{
-          $elements.map(_.opt).map(Opts.subcommand(_)).reduce(_ orElse _)
+          $elements.map(_.command).map(Opts.subcommand(_)).reduce(_ orElse _)
+        }
+
+        val cmd = '{
+          Command(
+            ${ hints.name }.getOrElse($command.toLowerCase()),
+            ${ hints.help }.getOrElse("")
+          )($derivedSubcommands.asInstanceOf)
         }
 
         '{
-          new CommandApplication[T]:
-            override val opt: Command[T] =
-              Command(
-                ${ hints.name }.getOrElse($command.toLowerCase()),
-                ${ hints.help }.getOrElse("")
-              )($derivedSubcommands.asInstanceOf)
-
-            override val subcommands: List[Command[T]] =
-              $elements.map(_.opt).asInstanceOf
+          CommandApplication.Impl(
+            $cmd,
+            $elements.map(_.command).asInstanceOf
+          ): CommandApplication[T]
         }
 
       case '{
@@ -129,14 +131,15 @@ private[decline_derive] object Macros:
             .map($m.fromProduct)
         }
 
+        val cmd = '{
+          Command[T](
+            ${ hints.name }.getOrElse($name.toLowerCase()),
+            ${ hints.help }.getOrElse("")
+          )($combined)
+        }
+
         '{
-          new CommandApplication[T]:
-            override val opt: Command[T] =
-              Command[T](
-                ${ hints.name }.getOrElse($name.toLowerCase()),
-                ${ hints.help }.getOrElse("")
-              )($combined)
-            override val subcommands: List[Command[T]] = Nil
+          CommandApplication.Impl($cmd, Nil)
         }
     end match
   end derivedMacro
