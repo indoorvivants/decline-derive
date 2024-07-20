@@ -1,6 +1,7 @@
 import munit.FunSuite
 
 import decline_derive.*
+import util.chaining.*
 
 class Tests extends FunSuite:
   test("simple parameters"):
@@ -117,6 +118,60 @@ class Tests extends FunSuite:
     assertErr[Cmd]("unknown")
     assertErr[Cmd]()
 
+  test("subcommands: nested"):
+    enum IndexCommand derives CommandApplication:
+      case Workspace(location: String)
+      case Files(
+          @arg(_.Positional())
+          locations: List[String]
+      )
+    end IndexCommand
+
+    enum EvaluateCommand derives CommandApplication:
+      case Simple(file: String, strict: Boolean)
+      case More(
+          @arg(_.FlagDefault(false))
+          yes: Boolean
+      )
+    end EvaluateCommand
+
+    enum Cmd derives CommandApplication:
+      case Index(commands: IndexCommand)
+      case Evaluate(commands: EvaluateCommand, test: Option[String])
+
+    assertArgs(Cmd.Index(IndexCommand.Workspace("hello.trig")))(
+      "index",
+      "workspace",
+      "--location",
+      "hello.trig"
+    )
+    assertArgs(
+      Cmd.Index(IndexCommand.Files(List("hello.trig1", "hello.trig2")))
+    )(
+      "index",
+      "files",
+      "hello.trig1",
+      "hello.trig2"
+    )
+
+    assertArgs(Cmd.Evaluate(EvaluateCommand.Simple("hello.trig", true), None))(
+      "evaluate",
+      "simple",
+      "--file",
+      "hello.trig",
+      "--strict"
+    )
+    assertArgs(Cmd.Evaluate(EvaluateCommand.More(false), Some("25")))(
+      "evaluate",
+      "--test",
+      "25",
+      "more",
+      "--yes"
+    )
+
+    assertErr[Cmd]("unknown")
+    assertErr[Cmd]()
+
   test("subcommands: name hints"):
     enum Cmd derives CommandApplication:
       @cmd(_.Name("index-file")) case Index(location: String)
@@ -140,4 +195,10 @@ class Tests extends FunSuite:
   private def assertErr[T: CommandApplication](args: String*) =
     val newValue = CommandApplication.parse[T](args)
     assert(newValue.isLeft, newValue)
+
+  private def printHelp[T: CommandApplication](args: String*) =
+    val Left(help) = CommandApplication.parse[T](args): @unchecked
+
+    println(help)
+  end printHelp
 end Tests

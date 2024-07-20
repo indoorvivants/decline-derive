@@ -54,11 +54,11 @@ private[decline_derive] object Macros:
       .of[T]
       .typeSymbol
       .annotations
-      .collectFirst:
+      .collectFirst {
         case term if term.tpe =:= cmdAnnot => term.asExprOf[cmd]
-      .match
-        case None    => '{ Seq.empty[CmdHint] }
-        case Some(e) => '{ $e.getHints }
+      } match
+      case None    => '{ Seq.empty[CmdHint] }
+      case Some(e) => '{ $e.getHints }
 
     val hints = CmdHintProvider(annots)
 
@@ -75,7 +75,7 @@ private[decline_derive] object Macros:
 
         val command = getString[commandName]
 
-        val subcommands = '{
+        val derivedSubcommands = '{
           $elements.map(_.opt).map(Opts.subcommand(_)).reduce(_ orElse _)
         }
 
@@ -85,7 +85,10 @@ private[decline_derive] object Macros:
               Command(
                 ${ hints.name }.getOrElse($command.toLowerCase()),
                 ${ hints.help }.getOrElse("")
-              )($subcommands.asInstanceOf)
+              )($derivedSubcommands.asInstanceOf)
+
+            override val subcommands: List[Command[T]] =
+              $elements.map(_.opt).asInstanceOf
         }
 
       case '{
@@ -99,19 +102,24 @@ private[decline_derive] object Macros:
 
         val argAnnot = TypeRepr.of[arg].typeSymbol
 
-        val t = TypeRepr
-          .of[T]
-          .typeSymbol
-          .primaryConstructor
-          .paramSymss
-          .flatten
-          .map: sym =>
-            if sym.hasAnnotation(argAnnot) then
-              val annotExpr = sym.getAnnotation(argAnnot).get.asExprOf[arg]
-              Some(annotExpr)
-            else None
+        val fieldNamesAndAnnotations: List[(String, Option[Expr[arg]])] =
+          TypeRepr
+            .of[T]
+            .typeSymbol
+            .primaryConstructor
+            .paramSymss
+            .flatten
+            .map: sym =>
+              (
+                sym.name,
+                if sym.hasAnnotation(argAnnot) then
+                  val annotExpr = sym.getAnnotation(argAnnot).get.asExprOf[arg]
+                  Some(annotExpr)
+                else None
+              )
 
-        val opts = Expr.ofList(fieldOpts[elementTypes, labels](t))
+        val opts =
+          Expr.ofList(fieldOpts[elementTypes](fieldNamesAndAnnotations))
 
         val combined = '{
           $opts
@@ -128,42 +136,61 @@ private[decline_derive] object Macros:
                 ${ hints.name }.getOrElse($name.toLowerCase()),
                 ${ hints.help }.getOrElse("")
               )($combined)
+            override val subcommands: List[Command[T]] = Nil
         }
     end match
   end derivedMacro
 
-  def summonArgument[E: Type](fieldName: Expr[String])(using Quotes) =
+  def summonArgument[E: Type](fieldName: String)(using Quotes) =
     import quotes.reflect.*
     Expr
       .summon[Argument[E]]
       .getOrElse:
         val tpe = TypeRepr.of[E].show
         report.errorAndAbort(
-          s"No instance of `Argument` typeclass was found for type `$tpe`, which is type of field `${fieldName.show}`"
+          s"No instance of `Argument` typeclass was found for type `$tpe`, which is type of field `${fieldName}`"
         )
   end summonArgument
 
   def constructOption[E: Type](
-      name: Expr[String],
+      name: String,
       hints: ArgHintProvider
   )(using Quotes): Expr[Opts[Any]] =
     import quotes.reflect.*
 
+    val isEnum = Implicits.search(TypeRepr.of[Mirror.SumOf[E]]) match
+      case _: ImplicitSearchSuccess => true
+      case _                        => false
+
+    val hasCommand = Implicits.search(TypeRepr.of[CommandApplication[E]]) match
+      case res: ImplicitSearchSuccess =>
+        Some(res.tree.asExprOf[CommandApplication[E]])
+      case _ => None
+
+    val nm = Expr(name)
+
     Type.of[E] match
+      case '[e] if isEnum && hasCommand.isDefined =>
+        '{
+          Opts.subcommands(
+            ${ hasCommand.get }.subcommands.head,
+            ${ hasCommand.get }.subcommands.tail*
+          )
+        }
       case '[Boolean] =>
         '{
           ${ hints.flag } match
             case None =>
               Opts
                 .flag(
-                  ${ hints.name }.getOrElse($name),
+                  ${ hints.name }.getOrElse($nm),
                   ${ hints.help }.getOrElse("")
                 )
                 .orFalse
             case Some(value) =>
               Opts
                 .flag(
-                  ${ hints.name }.getOrElse($name),
+                  ${ hints.name }.getOrElse($nm),
                   ${ hints.help }.getOrElse("")
                 )
                 .orTrue
@@ -181,7 +208,7 @@ private[decline_derive] object Macros:
           ${ hints.isArgument } match
             case None =>
               Opts.options[e](
-                ${ hints.name }.getOrElse($name),
+                ${ hints.name }.getOrElse($nm),
                 ${ hints.help }.getOrElse(""),
                 short = ${ hints.short }.getOrElse("")
               )
@@ -233,7 +260,7 @@ private[decline_derive] object Macros:
           ${ hints.isArgument } match
             case None =>
               Opts.option[E](
-                ${ hints.name }.getOrElse($name),
+                ${ hints.name }.getOrElse($nm),
                 ${ hints.help }.getOrElse(""),
                 short = ${ hints.short }.getOrElse("")
               )
@@ -250,20 +277,20 @@ private[decline_derive] object Macros:
     end match
   end constructOption
 
-  def fieldOpts[T: Type, L: Type](
-      annots: List[Option[Expr[arg]]]
+  def fieldOpts[T: Type](
+      annots: List[(String, Option[Expr[arg]])]
   )(using Quotes): List[Expr[Opts[?]]] =
-    (Type.of[T], Type.of[L]) match
-      case ('[elem *: elems], '[elemLabel *: elemLabels]) =>
-        val nm = getString[elemLabel]
-        val a = annots.head match
+    Type.of[T] match
+      case ('[elem *: elems]) =>
+        val nm = annots.head._1
+        val a = annots.head._2 match
           case None        => '{ Seq.empty[ArgHint] }
           case Some(value) => '{ $value.getHints }
 
         val hints = ArgHintProvider(a)
 
         constructOption[elem](nm, hints) ::
-          fieldOpts[elems, elemLabels](
+          fieldOpts[elems](
             annots.tail
           )
 

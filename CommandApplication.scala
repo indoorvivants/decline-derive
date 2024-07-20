@@ -6,6 +6,7 @@ import scala.quoted.*
 
 trait CommandApplication[T]:
   val opt: Command[T]
+  private[decline_derive] val subcommands: List[Command[T]]
 
 object CommandApplication:
   inline def derived[T](using Mirror.Of[T]): CommandApplication[T] =
