@@ -186,15 +186,17 @@ private[decline_derive] object Macros:
             case None =>
               Opts
                 .flag(
-                  ${ hints.name }.getOrElse($nm),
-                  ${ hints.help }.getOrElse("")
+                  long = ${ hints.name }.getOrElse($nm),
+                  help = ${ hints.help }.getOrElse(""),
+                  short = ${ hints.short }.getOrElse("")
                 )
                 .orFalse
             case Some(value) =>
               Opts
                 .flag(
-                  ${ hints.name }.getOrElse($nm),
-                  ${ hints.help }.getOrElse("")
+                  long = ${ hints.name }.getOrElse($nm),
+                  help = ${ hints.help }.getOrElse(""),
+                  short = ${ hints.short }.getOrElse("")
                 )
                 .orTrue
         }
