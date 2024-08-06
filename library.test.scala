@@ -68,10 +68,12 @@ class Tests extends FunSuite:
     assertArgs[Cmd](Cmd(Some("shroom"), true))("--yepp", "shroom", "--flag2")
 
   test("argument hints: short"):
-    case class Cmd(@arg(_.Short("y")) location: Option[String])
-        derives CommandApplication
+    case class Cmd(
+        @arg(_.Short("y")) location: Option[String],
+        @arg(_.Short("X")) flag: Boolean
+    ) derives CommandApplication
 
-    assertArgs[Cmd](Cmd(Some("shroom")))("-y", "shroom")
+    assertArgs[Cmd](Cmd(Some("shroom"), true))("-y", "shroom", "-X")
 
   test("argument hints: flag default"):
     case class Cmd(@arg(_.FlagDefault(true)) isLit: Boolean)
