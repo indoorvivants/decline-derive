@@ -67,6 +67,23 @@ class Tests extends FunSuite:
     assertArgs[Cmd](Cmd(Some("shroom"), false))("--yepp", "shroom")
     assertArgs[Cmd](Cmd(Some("shroom"), true))("--yepp", "shroom", "--flag2")
 
+  test("argument hints: env"):
+    case class Cmd(
+        @arg(_.Env("TEST_ME")) location: Option[String],
+        @arg(_.Env("HELLO")) count: Int
+    ) derives CommandApplication
+
+    assertArgs[Cmd](
+      Cmd(Some("shroom"), 25),
+      Map("TEST_ME" -> "shroom", "HELLO" -> "25")
+    )()
+
+    // arguments take priority over env
+    assertArgs[Cmd](
+      Cmd(Some("yes"), 11),
+      Map("TEST_ME" -> "shroom", "HELLO" -> "25")
+    )("--location", "yes", "--count", "11")
+
   test("argument hints: short"):
     case class Cmd(
         @arg(_.Short("y")) location: Option[String],
@@ -191,8 +208,11 @@ class Tests extends FunSuite:
       "--strict"
     )
 
-  private def assertArgs[T: CommandApplication](res: T)(args: String*) =
-    assertEquals(CommandApplication.parse[T](args), Right(res))
+  private def assertArgs[T: CommandApplication](
+      res: T,
+      env: Map[String, String] = Map.empty
+  )(args: String*) =
+    assertEquals(CommandApplication.parse[T](args, env), Right(res))
 
   private def assertErr[T: CommandApplication](args: String*) =
     val newValue = CommandApplication.parse[T](args)

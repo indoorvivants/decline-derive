@@ -8,7 +8,10 @@ private[decline_derive] case class ArgHintProvider(e: Expr[Seq[ArgHint]]):
   )(using Quotes): Expr[Option[T]] =
     '{ $e.collectFirst(f) }
 
-  end getHint
+  inline def getHintOption[T: Type](
+      inline f: PartialFunction[ArgHint, Option[T]]
+  )(using Quotes): Expr[Option[T]] =
+    '{ $e.collectFirst(f).flatten }
 
   def name(using Quotes) =
     getHint:
@@ -25,6 +28,15 @@ private[decline_derive] case class ArgHintProvider(e: Expr[Seq[ArgHint]]):
   def help(using Quotes) =
     getHint:
       case ArgHint.Help(value) => value
+
+  def envName(using Quotes) =
+    getHint:
+      case ArgHint.Env(name, _) => name
+
+  def envHelp(using Quotes) =
+    getHintOption:
+      case ArgHint.Env(_, help: String)         => Some(help)
+      case ArgHint.Env(_, help: Option[String]) => help
 
   def isArgument(using Quotes) =
     getHint:

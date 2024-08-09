@@ -6,4 +6,5 @@ enum ArgHint:
   case Help(value: String)
   case FlagDefault(value: Boolean)
   case Positional(metavar: String | Option[String] = None)
+  case Env(name: String, help: String | Option[String] = None)
 end ArgHint

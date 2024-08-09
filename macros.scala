@@ -260,18 +260,29 @@ private[decline_derive] object Macros:
         val param = summonArgument[E](name)
 
         '{
-          given Argument[E] = $param
+          def env = ${ hints.envName }
+          def envHelp = ${ hints.envHelp }
 
-          ${ hints.isArgument } match
+          val base = ${ hints.isArgument } match
             case None =>
               Opts.option[E](
                 ${ hints.name }.getOrElse($nm),
                 ${ hints.help }.getOrElse(""),
                 short = ${ hints.short }.getOrElse("")
-              )
+              )(using $param)
 
             case Some(value) =>
-              Opts.argument[E](metavar = value.getOrElse(""))
+              Opts.argument[E](metavar = value.getOrElse(""))(using $param)
+          end base
+
+          env match
+            case None => base
+            case Some(value) =>
+              base.orElse(
+                Opts.env[E](name = value, help = envHelp.getOrElse(""))(using
+                  $param
+                )
+              )
           end match
 
         }
