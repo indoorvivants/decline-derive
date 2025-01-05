@@ -1,6 +1,7 @@
-//> using dep com.monovore::decline::2.4.1
+//> using dep com.monovore::decline::2.5.0
+
 //> using option -Wunused:all
-//> using test.dep org.scalameta::munit::1.0.0
+//> using test.dep org.scalameta::munit::1.0.3
 
 //> using publish.computeVersion git:tag
 //> using publish.name decline-derive
@@ -12,6 +13,6 @@
 //> using publish.developer "velvetbaldmime|Anton Sviridov|https://indoorvivants.com"
 //> using publish.vcs github:indoorvivants/decline-derive
 //> using publish.url https://github.com/indoorvivants/decline-derive
-//> using scala 3.3.3
-//> using nativeVersion 0.4.17
+//> using scala 3.3.4
+//> using nativeVersion 0.5.6
 //> using jsVersion 1.16.0
