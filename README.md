@@ -44,7 +44,7 @@ enum CLI derives CommandApplication:
 Notice how we're using `@Name("lit")` to customise certain aspects of 
 generated Decline parser.
 
-For more configuration options, see [tests]("./library.test.scala"), [annotations](./annotations.scala).
+For more configuration options, see [tests](./library.test.scala), [annotations](./annotations.scala).
 
 ## Contributing
 
