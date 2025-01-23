@@ -60,8 +60,8 @@ class Tests extends FunSuite:
 
   test("argument hints: name"):
     case class Cmd(
-        @arg(_.Name("yepp")) location: Option[String],
-        @arg(_.Name("flag2")) flag: Boolean
+        @Name("yepp") location: Option[String],
+        @Name("flag2") flag: Boolean
     ) derives CommandApplication
 
     assertArgs[Cmd](Cmd(Some("shroom"), false))("--yepp", "shroom")
@@ -69,8 +69,8 @@ class Tests extends FunSuite:
 
   test("argument hints: env"):
     case class Cmd(
-        @arg(_.Env("TEST_ME")) location: Option[String],
-        @arg(_.Env("HELLO")) count: Int
+        @Env("TEST_ME", "") location: Option[String],
+        @Env("HELLO", "") count: Int
     ) derives CommandApplication
 
     assertArgs[Cmd](
@@ -86,22 +86,21 @@ class Tests extends FunSuite:
 
   test("argument hints: short"):
     case class Cmd(
-        @arg(_.Short("y")) location: Option[String],
-        @arg(_.Short("X")) flag: Boolean
+        @Short("y") location: Option[String],
+        @Short("X") flag: Boolean
     ) derives CommandApplication
 
     assertArgs[Cmd](Cmd(Some("shroom"), true))("-y", "shroom", "-X")
 
   test("argument hints: flag default"):
-    case class Cmd(@arg(_.FlagDefault(true)) isLit: Boolean)
-        derives CommandApplication
+    case class Cmd(@Flag(true) isLit: Boolean) derives CommandApplication
 
     assertArgs[Cmd](Cmd(false))("--isLit")
 
   test("argument hints: positional"):
     case class Cmd(
         location: String,
-        @arg(_.Positional("metavar")) isLit: String
+        @Positional("metavar") isLit: String
     ) derives CommandApplication
 
     assertArgs[Cmd](Cmd("hello", "yes"))("--location", "hello", "yes")
@@ -109,7 +108,7 @@ class Tests extends FunSuite:
   test("argument hints: positional (repeated)"):
     case class Cmd(
         location: String,
-        @arg(_.Positional("metavar"))
+        @Positional("metavar")
         isLit: List[String]
     ) derives CommandApplication
 
@@ -141,7 +140,7 @@ class Tests extends FunSuite:
     enum IndexCommand derives CommandApplication:
       case Workspace(location: String)
       case Files(
-          @arg(_.Positional())
+          @Positional("locations")
           locations: List[String]
       )
     end IndexCommand
@@ -149,7 +148,7 @@ class Tests extends FunSuite:
     enum EvaluateCommand derives CommandApplication:
       case Simple(file: String, strict: Boolean)
       case More(
-          @arg(_.FlagDefault(false))
+          @Flag(true)
           yes: Boolean
       )
     end EvaluateCommand
@@ -193,8 +192,8 @@ class Tests extends FunSuite:
 
   test("subcommands: name hints"):
     enum Cmd derives CommandApplication:
-      @cmd(_.Name("index-file")) case Index(location: String)
-      @cmd(_.Name("evaluate-all")) case Evaluate(file: String, strict: Boolean)
+      @Name("index-file") case Index(location: String)
+      @Name("evaluate-all") case Evaluate(file: String, strict: Boolean)
 
     assertArgs(Cmd.Index("hello.trig"))(
       "index-file",
@@ -218,9 +217,4 @@ class Tests extends FunSuite:
     val newValue = CommandApplication.parse[T](args)
     assert(newValue.isLeft, newValue)
 
-  private def printHelp[T: CommandApplication](args: String*) =
-    val Left(help) = CommandApplication.parse[T](args): @unchecked
-
-    println(help)
-  end printHelp
 end Tests

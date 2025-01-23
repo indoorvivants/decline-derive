@@ -15,9 +15,23 @@ object CommandApplication:
 
   inline def parse[T: CommandApplication](
       args: Seq[String],
-      env: Map[String, String] = Map.empty
+      env: Map[String, String] = sys.env
   ): Either[Help, T] =
     summon[CommandApplication[T]].command.parse(args, env)
+
+  inline def parseOrExit[T: CommandApplication](
+      args: Seq[String],
+      env: Map[String, String] = sys.env,
+      printHelp: Boolean = true
+  ): T =
+    summon[CommandApplication[T]].command.parse(args, env) match
+      case Left(value) =>
+        if printHelp then println(value)
+        if value.errors.nonEmpty then sys.exit(-1) else sys.exit(0)
+      case Right(value) =>
+        value
+    end match
+  end parseOrExit
 
   class Impl[T](
       val opt: Command[T],
