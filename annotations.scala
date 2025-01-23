@@ -1,9 +1,29 @@
 package decline_derive
 
-class arg(val hints: (ArgHint.type => ArgHint)*)
-    extends annotation.StaticAnnotation:
-  private[decline_derive] def getHints = hints.map(_(ArgHint))
+import scala.annotation.ConstantAnnotation
 
-class cmd(val hints: (CmdHint.type => CmdHint)*)
-    extends annotation.StaticAnnotation:
-  private[decline_derive] def getHints = hints.map(_(CmdHint))
+private trait DeclineDeriveAnnotation
+
+class Name(val value: String)
+    extends ConstantAnnotation,
+      DeclineDeriveAnnotation
+
+class Short(val value: String)
+    extends ConstantAnnotation,
+      DeclineDeriveAnnotation
+
+class Help(val value: String)
+    extends ConstantAnnotation,
+      DeclineDeriveAnnotation
+
+class Positional(val metavar: String)
+    extends ConstantAnnotation,
+      DeclineDeriveAnnotation
+
+class Env(val name: String, val help: String)
+    extends ConstantAnnotation,
+      DeclineDeriveAnnotation
+
+class Flag(val default: Boolean)
+    extends ConstantAnnotation,
+      DeclineDeriveAnnotation

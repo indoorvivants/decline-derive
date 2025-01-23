@@ -8,8 +8,7 @@ import cats.data.NonEmptyList
 import scala.reflect.ClassTag
 
 private[decline_derive] object Macros:
-
-  def summonInstances[T: Type, Elems: Type](using
+  private def summonInstances[T: Type, Elems: Type](using
       Quotes
   ): List[Expr[CommandApplication[?]]] =
     Type.of[Elems] match
@@ -17,50 +16,120 @@ private[decline_derive] object Macros:
         deriveOrSummon[T, elem].asInstanceOf :: summonInstances[T, elems]
       case '[EmptyTuple] => Nil
 
-  def summonLabels[Elems: Type](using Quotes): List[Expr[String]] =
-    Type.of[Elems] match
-      case '[elem *: elems] =>
-        val expr = Expr.summon[ValueOf[elem]].get
-
-        '{ $expr.value.asInstanceOf[String] } :: summonLabels[elems]
-      case '[EmptyTuple] => Nil
-
-  def deriveOrSummon[T: Type, Elem: Type](using
+  private def deriveOrSummon[T: Type, Elem: Type](using
       Quotes
   ): Expr[CommandApplication[Elem]] =
     Type.of[Elem] match
       case '[T] => deriveRec[T, Elem]
       case _    => '{ summonInline[CommandApplication[Elem]] }
 
-  def deriveRec[T: Type, Elem: Type](using
+  private def deriveRec[T: Type, Elem: Type](using
       Quotes
   ): Expr[CommandApplication[Elem]] =
     Type.of[T] match
       case '[Elem] => '{ error("infinite recursive derivation") }
       case _       => derivedMacro[Elem] // recursive derivation
 
-  def getString[T: Type](using Quotes): Expr[String] =
+  private def getString[T: Type](using Quotes): Expr[String] =
     Expr.summon[ValueOf[T]].get match
       case '{ $v } =>
         '{ $v.value.asInstanceOf[String] }
+
+  private final case class Hints(
+      name: Option[String] = None,
+      short: Option[String] = None,
+      help: Option[String] = None,
+      flag: Option[Boolean] = None,
+      positional: Option[String] = None,
+      env: Option[(String, String)] = None
+  )
+
+  private given FromExpr[Name] with
+    def unapply(x: Expr[Name])(using Quotes): Option[Name] =
+      x match
+        case '{ new Name($value) } => Some(Name(value.valueOrAbort))
+        case _                     => None
+  end given
+
+  private given FromExpr[Flag] with
+    def unapply(x: Expr[Flag])(using Quotes): Option[Flag] =
+      x match
+        case '{ new Flag($value) } => Some(Flag(value.valueOrAbort))
+        case _                     => None
+  end given
+
+  private given FromExpr[Positional] with
+    def unapply(x: Expr[Positional])(using Quotes): Option[Positional] =
+      x match
+        case '{ new Positional($value) } => Some(Positional(value.valueOrAbort))
+        case _                           => None
+  end given
+
+  private given FromExpr[Help] with
+    def unapply(x: Expr[Help])(using Quotes): Option[Help] =
+      x match
+        case '{ new Help($value) } => Some(Help(value.valueOrAbort))
+        case _                     => None
+  end given
+
+  private given FromExpr[Env] with
+    def unapply(x: Expr[Env])(using Quotes): Option[Env] =
+      x match
+        case '{ new Env($name, $help) } =>
+          Some(Env(name.valueOrAbort, help.valueOrAbort))
+        case _ => None
+  end given
+
+  private given FromExpr[Short] with
+    def unapply(x: Expr[Short])(using Quotes): Option[Short] =
+      x match
+        case '{ new Short($value) } => Some(Short(value.valueOrAbort))
+        case _                      => None
+  end given
 
   def derivedMacro[T: Type](using Quotes): Expr[CommandApplication[T]] =
     val ev: Expr[Mirror.Of[T]] = Expr.summon[Mirror.Of[T]].get
 
     import quotes.reflect.*
 
-    val cmdAnnot = TypeRepr.of[cmd]
-    val annots = TypeRepr
-      .of[T]
-      .typeSymbol
-      .annotations
-      .collectFirst {
-        case term if term.tpe =:= cmdAnnot => term.asExprOf[cmd]
-      } match
-      case None    => '{ Seq.empty[CmdHint] }
-      case Some(e) => '{ $e.getHints }
+    // val cmdAnnot = TypeRepr.of[cmd]
+    val derivedAnnot = TypeRepr.of[DeclineDeriveAnnotation]
 
-    val hints = CmdHintProvider(annots)
+    val cmdHints =
+      TypeRepr
+        .of[T]
+        .typeSymbol
+        .annotations
+        .foldLeft(Hints()): (hints, ann) =>
+          if ann.tpe <:< TypeRepr.of[Name] then
+            hints.copy(name = Some(ann.asExprOf[Name].valueOrAbort.value))
+          else if ann.tpe <:< TypeRepr.of[Help] then
+            hints.copy(help = Some(ann.asExprOf[Help].valueOrAbort.value))
+          else if ann.tpe <:< derivedAnnot then
+            report.errorAndAbort(
+              s"Commands are not allowed to have `${ann.tpe.show}` annotations - only Name and Help",
+              ann.pos
+            )
+          else hints
+
+    def collectArgAnnotations(terms: List[Term]): Hints =
+      terms.foldLeft(Hints()): (hints, ann) =>
+        if ann.tpe <:< TypeRepr.of[Name] then
+          hints.copy(name = Some(ann.asExprOf[Name].valueOrAbort.value))
+        else if ann.tpe <:< TypeRepr.of[Help] then
+          hints.copy(help = Some(ann.asExprOf[Help].valueOrAbort.value))
+        else if ann.tpe <:< TypeRepr.of[Short] then
+          hints.copy(short = Some(ann.asExprOf[Short].valueOrAbort.value))
+        else if ann.tpe <:< TypeRepr.of[Flag] then
+          hints.copy(flag = Some(ann.asExprOf[Flag].valueOrAbort.default))
+        else if ann.tpe <:< TypeRepr.of[Positional] then
+          hints.copy(positional =
+            Some(ann.asExprOf[Positional].valueOrAbort.metavar)
+          )
+        else if ann.tpe <:< TypeRepr.of[Env] then
+          val annot = ann.asExprOf[Env].valueOrAbort
+          hints.copy(env = Some(annot.name -> annot.help))
+        else hints
 
     ev match
       case '{
@@ -74,6 +143,8 @@ private[decline_derive] object Macros:
         val elements = Expr.ofList(elemInstances)
 
         val command = getString[commandName]
+        val name = cmdHints.name.fold('{ $command.toLowerCase() })(Expr.apply)
+        val help = cmdHints.help.fold(Expr(""))(Expr.apply)
 
         val derivedSubcommands = '{
           $elements.map(_.command).map(Opts.subcommand(_)).reduce(_ orElse _)
@@ -81,8 +152,8 @@ private[decline_derive] object Macros:
 
         val cmd = '{
           Command(
-            ${ hints.name }.getOrElse($command.toLowerCase()),
-            ${ hints.help }.getOrElse("")
+            $name,
+            $help
           )($derivedSubcommands.asInstanceOf)
         }
 
@@ -100,11 +171,9 @@ private[decline_derive] object Macros:
               type MirroredLabel = commandName
             }
           } =>
-        val name = getString[commandName]
+        val command = getString[commandName]
 
-        val argAnnot = TypeRepr.of[arg].typeSymbol
-
-        val fieldNamesAndAnnotations: List[(String, Option[Expr[arg]])] =
+        val fieldNamesAndAnnotations: List[(String, Hints)] =
           TypeRepr
             .of[T]
             .typeSymbol
@@ -114,10 +183,7 @@ private[decline_derive] object Macros:
             .map: sym =>
               (
                 sym.name,
-                if sym.hasAnnotation(argAnnot) then
-                  val annotExpr = sym.getAnnotation(argAnnot).get.asExprOf[arg]
-                  Some(annotExpr)
-                else None
+                collectArgAnnotations(sym.annotations)
               )
 
         val opts =
@@ -131,10 +197,13 @@ private[decline_derive] object Macros:
             .map($m.fromProduct)
         }
 
+        val name = cmdHints.name.fold('{ $command.toLowerCase() })(Expr.apply)
+        val help = cmdHints.help.fold(Expr(""))(Expr.apply)
+
         val cmd = '{
           Command[T](
-            ${ hints.name }.getOrElse($name.toLowerCase()),
-            ${ hints.help }.getOrElse("")
+            $name,
+            $help
           )($combined)
         }
 
@@ -144,7 +213,7 @@ private[decline_derive] object Macros:
     end match
   end derivedMacro
 
-  def summonArgument[E: Type](fieldName: String)(using Quotes) =
+  private def summonArgument[E: Type](fieldName: String)(using Quotes) =
     import quotes.reflect.*
     Expr
       .summon[Argument[E]]
@@ -155,9 +224,9 @@ private[decline_derive] object Macros:
         )
   end summonArgument
 
-  def constructOption[E: Type](
+  private def constructOption[E: Type](
       name: String,
-      hints: ArgHintProvider
+      hints: Hints
   )(using Quotes): Expr[Opts[Any]] =
     import quotes.reflect.*
 
@@ -170,7 +239,12 @@ private[decline_derive] object Macros:
         Some(res.tree.asExprOf[CommandApplication[E]])
       case _ => None
 
-    val nm = Expr(name)
+    val nm = hints.name match
+      case None        => Expr(name)
+      case Some(value) => Expr(value)
+
+    val help = hints.help.fold(Expr(""))(Expr.apply)
+    val short = hints.short.fold(Expr(""))(Expr.apply)
 
     Type.of[E] match
       case '[e] if isEnum && hasCommand.isDefined =>
@@ -181,25 +255,28 @@ private[decline_derive] object Macros:
           )
         }
       case '[Boolean] =>
-        '{
-          ${ hints.flag } match
-            case None =>
+        hints.flag match
+          case None | Some(false) =>
+            '{
               Opts
                 .flag(
-                  long = ${ hints.name }.getOrElse($nm),
-                  help = ${ hints.help }.getOrElse(""),
-                  short = ${ hints.short }.getOrElse("")
+                  long = $nm,
+                  help = $help,
+                  short = $short
                 )
                 .orFalse
-            case Some(value) =>
+            }
+          case _ =>
+            '{
               Opts
                 .flag(
-                  long = ${ hints.name }.getOrElse($nm),
-                  help = ${ hints.help }.getOrElse(""),
-                  short = ${ hints.short }.getOrElse("")
+                  long = $nm,
+                  help = $help,
+                  short = $short
                 )
                 .orTrue
-        }
+            }
+        end match
 
       case '[Option[e]] =>
         '{ ${ constructOption[e](name, hints) }.orNone }
@@ -207,21 +284,24 @@ private[decline_derive] object Macros:
       case '[NonEmptyList[e]] =>
         val param = summonArgument[e](name)
 
-        '{
-          given Argument[e] = $param
-
-          ${ hints.isArgument } match
-            case None =>
+        hints.positional match
+          case None =>
+            '{
+              given Argument[e] = $param
               Opts.options[e](
-                ${ hints.name }.getOrElse($nm),
-                ${ hints.help }.getOrElse(""),
-                short = ${ hints.short }.getOrElse("")
+                long = $nm,
+                help = $help,
+                short = $short
               )
+            }
+          case Some(value) =>
+            val metavar = Expr(value)
+            '{
+              given Argument[e] = $param
+              Opts.arguments[e](metavar = $metavar)
+            }
 
-            case Some(value) =>
-              Opts.arguments[e](metavar = value.getOrElse(""))
-          end match
-        }
+        end match
 
       case '[List[e]] =>
         '{
@@ -259,33 +339,32 @@ private[decline_derive] object Macros:
       case '[e] =>
         val param = summonArgument[E](name)
 
-        '{
-          def env = ${ hints.envName }
-          def envHelp = ${ hints.envHelp }
-
-          val base = ${ hints.isArgument } match
-            case None =>
+        val base = hints.positional match
+          case None =>
+            '{
               Opts.option[E](
-                ${ hints.name }.getOrElse($nm),
-                ${ hints.help }.getOrElse(""),
-                short = ${ hints.short }.getOrElse("")
+                $nm,
+                $help,
+                short = $short
               )(using $param)
+            }
+          case Some(value) =>
+            val metaver = Expr(value)
+            '{ Opts.argument[E](metavar = $metaver)(using $param) }
+        end base
 
-            case Some(value) =>
-              Opts.argument[E](metavar = value.getOrElse(""))(using $param)
-          end base
-
-          env match
-            case None => base
-            case Some(value) =>
-              base.orElse(
-                Opts.env[E](name = value, help = envHelp.getOrElse(""))(using
-                  $param
-                )
+        hints.env match
+          case None =>
+            base
+          case Some((name, help)) =>
+            val envName = Expr(name)
+            val envHelp = Expr(help)
+            '{
+              $base.orElse(
+                Opts.env[E](name = $envName, help = $envHelp)(using $param)
               )
-          end match
-
-        }
+            }
+        end match
       case _ =>
         report.errorAndAbort(
           s"Don't know how to handle type ${TypeRepr.of[E].show}"
@@ -293,19 +372,14 @@ private[decline_derive] object Macros:
     end match
   end constructOption
 
-  def fieldOpts[T: Type](
-      annots: List[(String, Option[Expr[arg]])]
+  private def fieldOpts[T: Type](
+      annots: List[(String, Hints)]
   )(using Quotes): List[Expr[Opts[?]]] =
     Type.of[T] match
       case ('[elem *: elems]) =>
         val nm = annots.head._1
-        val a = annots.head._2 match
-          case None        => '{ Seq.empty[ArgHint] }
-          case Some(value) => '{ $value.getHints }
 
-        val hints = ArgHintProvider(a)
-
-        constructOption[elem](nm, hints) ::
+        constructOption[elem](nm, annots.head._2) ::
           fieldOpts[elems](
             annots.tail
           )

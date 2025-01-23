@@ -34,17 +34,17 @@ Latest version: [![decline-derive Scala version support](https://index.scala-lan
 import decline_derive.*
 
 enum CLI derives CommandApplication:
-  case Index(location: String, @arg(_.Name("lit")) isLit: Boolean)
-  case Run(@arg(_.Positional()) files: List[String])
+  case Index(location: String, @Name("lit") isLit: Boolean)
+  case Run(@Positional("files") files: List[String])
 
 @main def helloDecline(args: String*) = 
     println(CommandApplication.parse[CLI](args))
 ```
 
-Notice how we're using `@arg(_.Name("lit"))` to customise certain aspects of 
+Notice how we're using `@Name("lit")` to customise certain aspects of 
 generated Decline parser.
 
-For more configuration options, see [tests]("./library.test.scala"), [ArgHint]("./ArgHint.scala"), [CmdHint]("./CmdHint.scala") and [annotations]("./annotations.scala").
+For more configuration options, see [tests]("./library.test.scala"), [annotations](./annotations.scala).
 
 ## Contributing
 
