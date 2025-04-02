@@ -4,6 +4,10 @@ import scala.annotation.ConstantAnnotation
 
 private trait DeclineDeriveAnnotation
 
+private[decline_derive] class Debug()
+    extends ConstantAnnotation,
+      DeclineDeriveAnnotation
+
 class Name(val value: String)
     extends ConstantAnnotation,
       DeclineDeriveAnnotation

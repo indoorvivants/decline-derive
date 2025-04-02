@@ -207,6 +207,33 @@ class Tests extends FunSuite:
       "--strict"
     )
 
+  test("issue #8: Name label on enum shouldn't propagate to cases".only):
+    @Name("wut")
+    enum Cmd derives CommandApplication:
+      case Open
+      case Close()
+
+    @Name("wut")
+    enum Cmd1 derives CommandApplication:
+      @Name("yass") case Open
+      @Name("nope") case Close()
+
+    assertArgs(Cmd.Open)(
+      "open"
+    )
+
+    assertArgs(Cmd.Close())(
+      "close"
+    )
+
+    assertArgs(Cmd1.Open)(
+      "yass"
+    )
+
+    assertArgs(Cmd1.Close())(
+      "nope"
+    )
+
   private def assertArgs[T: CommandApplication](
       res: T,
       env: Map[String, String] = Map.empty

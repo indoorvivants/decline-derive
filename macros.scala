@@ -41,7 +41,8 @@ private[decline_derive] object Macros:
       help: Option[String] = None,
       flag: Option[Boolean] = None,
       positional: Option[String] = None,
-      env: Option[(String, String)] = None
+      env: Option[(String, String)] = None,
+      debug: Boolean = false
   )
 
   private given FromExpr[Name] with
@@ -92,19 +93,16 @@ private[decline_derive] object Macros:
 
     import quotes.reflect.*
 
-    // val cmdAnnot = TypeRepr.of[cmd]
     val derivedAnnot = TypeRepr.of[DeclineDeriveAnnotation]
 
-    val cmdHints =
-      TypeRepr
-        .of[T]
-        .typeSymbol
-        .annotations
+    def collectCommandHints(annotations: List[Term]): Hints =
+      annotations
         .foldLeft(Hints()): (hints, ann) =>
           if ann.tpe <:< TypeRepr.of[Name] then
             hints.copy(name = Some(ann.asExprOf[Name].valueOrAbort.value))
           else if ann.tpe <:< TypeRepr.of[Help] then
             hints.copy(help = Some(ann.asExprOf[Help].valueOrAbort.value))
+          else if ann.tpe <:< TypeRepr.of[Debug] then hints.copy(debug = true)
           else if ann.tpe <:< derivedAnnot then
             report.errorAndAbort(
               s"Commands are not allowed to have `${ann.tpe.show}` annotations - only Name and Help",
@@ -139,6 +137,14 @@ private[decline_derive] object Macros:
               type MirroredLabel = commandName
             }
           } =>
+        val cmdHints =
+          collectCommandHints(
+            TypeRepr
+              .of[T]
+              .typeSymbol
+              .annotations
+          )
+
         val elemInstances = summonInstances[T, elementTypes]
         val elements = Expr.ofList(elemInstances)
 
@@ -165,13 +171,62 @@ private[decline_derive] object Macros:
         }
 
       case '{
+            $m: Mirror.Singleton {
+              type MirroredLabel = commandName
+              type MirroredType = monoType
+            }
+          } =>
+        val command = getString[commandName]
+        val cmdHints = collectCommandHints(
+          TypeRepr.of[monoType].termSymbol.annotations
+        )
+
+        val name = cmdHints.name.fold('{ $command.toLowerCase() })(Expr.apply)
+
+        // report.warning(s"$m -- $cmdHints")
+        val help = cmdHints.help.fold(Expr(""))(Expr.apply)
+
+        if cmdHints.debug then
+          report.warning(
+            s"${TypeRepr.of[monoType].termSymbol.annotations}"
+          )
+
+        val cmd = '{
+          Command[T](
+            $name,
+            $help
+          )(Opts.unit.map(_ => $m.fromProduct(EmptyTuple)))
+        }
+
+        '{
+          CommandApplication.Impl($cmd, Nil)
+        }
+
+      case '{
             $m: Mirror.ProductOf[T] {
               type MirroredElemTypes = elementTypes;
               type MirroredElemLabels = labels
               type MirroredLabel = commandName
+              type MirroredType = t
             }
           } =>
         val command = getString[commandName]
+
+        val cmdHints =
+          collectCommandHints(
+            TypeRepr
+              .of[T]
+              .typeSymbol
+              .annotations
+          )
+
+        if cmdHints.debug then
+          // report.warning(s"${TypeRepr.of[elementTypes]} -- $cmdHints")
+          report.warning(
+            s"${m.show} ${TypeRepr.of[t] == TypeRepr.of[T]} ${TypeRepr
+                .of[elementTypes] == TypeRepr.of[EmptyTuple]}"
+          )
+        end if
 
         val fieldNamesAndAnnotations: List[(String, Hints)] =
           TypeRepr
@@ -198,6 +253,8 @@ private[decline_derive] object Macros:
         }
 
         val name = cmdHints.name.fold('{ $command.toLowerCase() })(Expr.apply)
+
+        // report.warning(s"$m -- $cmdHints")
         val help = cmdHints.help.fold(Expr(""))(Expr.apply)
 
         val cmd = '{
