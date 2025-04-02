@@ -13,12 +13,20 @@ object CommandApplication:
   inline def derived[T](using Mirror.Of[T]): CommandApplication[T] =
     ${ Macros.derivedMacro[T] }
 
+  /** Parse the command line arguments and the environment variables. Note that
+    * by default `sys.env` is used as default value for @env parameter
+    */
   inline def parse[T: CommandApplication](
       args: Seq[String],
       env: Map[String, String] = sys.env
   ): Either[Help, T] =
     summon[CommandApplication[T]].command.parse(args, env)
 
+  /** Parse the command line arguments and the environment variables, but exit
+    * the program if either `--help` flag is passed (exit code 0, help printed
+    * to stderr), or an error was encountered (exit code -1). Note that by
+    * default `sys.env` is used as default value for @env parameter
+    */
   inline def parseOrExit[T: CommandApplication](
       args: Seq[String],
       env: Map[String, String] = sys.env,
@@ -26,7 +34,7 @@ object CommandApplication:
   ): T =
     summon[CommandApplication[T]].command.parse(args, env) match
       case Left(value) =>
-        if printHelp then println(value)
+        if printHelp then System.err.println(value)
         if value.errors.nonEmpty then sys.exit(-1) else sys.exit(0)
       case Right(value) =>
         value
