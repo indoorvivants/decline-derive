@@ -1,6 +1,6 @@
 // Main
-//> using scala 3.3.4
-//> using nativeVersion 0.5.6
+//> using scala 3.3.5
+//> using nativeVersion 0.5.7
 //> using jsVersion 1.18.2
 //> using options -Wunused:all
 //> using dependency com.monovore::decline::2.5.0
@@ -18,4 +18,3 @@
 
 // Test
 //> using test.dependency org.scalameta::munit::1.1.0
-
