@@ -183,13 +183,7 @@ private[decline_derive] object Macros:
 
         val name = cmdHints.name.fold('{ $command.toLowerCase() })(Expr.apply)
 
-        // report.warning(s"$m -- $cmdHints")
         val help = cmdHints.help.fold(Expr(""))(Expr.apply)
-
-        if cmdHints.debug then
-          report.warning(
-            s"${TypeRepr.of[monoType].termSymbol.annotations}"
-          )
 
         val cmd = '{
           Command[T](
@@ -220,14 +214,6 @@ private[decline_derive] object Macros:
               .annotations
           )
 
-        if cmdHints.debug then
-          // report.warning(s"${TypeRepr.of[elementTypes]} -- $cmdHints")
-          report.warning(
-            s"${m.show} ${TypeRepr.of[t] == TypeRepr.of[T]} ${TypeRepr
-                .of[elementTypes] == TypeRepr.of[EmptyTuple]}"
-          )
-        end if
-
         val fieldNamesAndAnnotations: List[(String, Hints)] =
           TypeRepr
             .of[T]
@@ -254,7 +240,6 @@ private[decline_derive] object Macros:
 
         val name = cmdHints.name.fold('{ $command.toLowerCase() })(Expr.apply)
 
-        // report.warning(s"$m -- $cmdHints")
         val help = cmdHints.help.fold(Expr(""))(Expr.apply)
 
         val cmd = '{
