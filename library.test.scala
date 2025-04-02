@@ -207,7 +207,7 @@ class Tests extends FunSuite:
       "--strict"
     )
 
-  test("issue #8: Name label on enum shouldn't propagate to cases".only):
+  test("issue #8: Name label on enum shouldn't propagate to cases"):
     @Name("wut")
     enum Cmd derives CommandApplication:
       case Open
