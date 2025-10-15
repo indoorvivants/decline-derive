@@ -24,6 +24,9 @@ code-check:
 
 run-example:
 	scala-cli run README.md *.scala -M helloDecline -- --help
+	scala-cli run README.md *.scala -M helloDecline -- bootstrap --help
+	scala-cli run README.md *.scala -M helloDecline -- index --help
+	scala-cli run README.md *.scala -M helloDecline -- run --help
 
 pre-ci:
 	scala-cli fmt *.scala
