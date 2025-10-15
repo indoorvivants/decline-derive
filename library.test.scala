@@ -2,6 +2,7 @@ import munit.FunSuite
 
 import decline_derive.*
 import util.chaining.*
+import com.monovore.decline.Argument
 
 class Tests extends FunSuite:
   test("simple parameters"):
@@ -280,6 +281,16 @@ class Tests extends FunSuite:
     // Test with flag set - should prefer default parameter value
     assertArgs(Cmd(false))("--verbose")
 
+  test("default values: custom Argument types"):
+    case class Port(i: Int)
+    given Argument[Port] =
+      Argument.readInt.map(Port(_))
+
+    case class Cmd(port: Port = Port(25)) derives CommandApplication
+
+    assertNoArgs(Cmd(Port(25)))
+    assertArgs(Cmd(Port(500)))("--port", "500")
+
   test("default values: optional with defaults"):
     case class Cmd(location: Option[String] = Some("default"))
         derives CommandApplication
@@ -323,6 +334,12 @@ class Tests extends FunSuite:
       env: Map[String, String] = Map.empty
   )(args: String*) =
     assertEquals(CommandApplication.parse[T](args, env), Right(res))
+
+  private def assertNoArgs[T: CommandApplication](
+      res: T,
+      env: Map[String, String] = Map.empty
+  ) =
+    assertEquals(CommandApplication.parse[T](Seq.empty, env), Right(res))
 
   private def assertErr[T: CommandApplication](args: String*) =
     val newValue = CommandApplication.parse[T](args)
