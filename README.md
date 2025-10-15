@@ -36,13 +36,14 @@ import decline_derive.*
 enum CLI derives CommandApplication:
   case Index(location: String, @Name("lit") isLit: Boolean)
   case Run(@Positional("files") files: List[String])
+  case Bootstrap(config: String = "config.toml")
 
 @main def helloDecline(args: String*) =
     println(CommandApplication.parse[CLI](args))
 ```
 
 Notice how we're using `@Name("lit")` to customise certain aspects of
-generated Decline parser.
+generated Decline parser. Default parameter values turn them into optional in the generated CLI
 
 For more configuration options, see [tests](./library.test.scala), [annotations](./annotations.scala).
 

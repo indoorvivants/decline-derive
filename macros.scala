@@ -35,6 +35,56 @@ private[decline_derive] object Macros:
       case '{ $v } =>
         '{ $v.value.asInstanceOf[String] }
 
+  private def extractDefaultValues[T: Type](using
+      Quotes
+  ): Map[String, Expr[Any]] =
+    import quotes.reflect.*
+
+    val sym = TypeRepr.of[T].typeSymbol
+    val comp = sym.companionClass
+
+    if comp == Symbol.noSymbol then return Map.empty
+
+    val mod = Ref(sym.companionModule)
+    val typeArgs = TypeRepr.of[T] match
+      case AppliedType(_, args) => args
+      case _                    => Nil
+
+    // Get parameters with default values
+    val paramsWithDefaults = sym.caseFields.zipWithIndex.collect {
+      case (field, idx) if field.flags.is(Flags.HasDefault) => (field.name, idx)
+    }
+
+    if paramsWithDefaults.isEmpty then return Map.empty
+
+    // Get default value methods from companion
+    val body = comp.tree.asInstanceOf[ClassDef].body
+    val defaultMethods = body.collect {
+      case deff @ DefDef(name, _, _, _)
+          if name.startsWith("$lessinit$greater$default") =>
+        val methodNum = name
+          .stripPrefix("$lessinit$greater$default$")
+          .toIntOption
+          .getOrElse(-1)
+        (methodNum, deff.symbol)
+    }.toMap
+
+    // Map parameter names to their default values
+    paramsWithDefaults.map { case (paramName, idx) =>
+      val methodIdx = idx + 1 // Default methods are 1-indexed
+      defaultMethods.get(methodIdx) match
+        case Some(symbol) =>
+          val ref = mod.select(symbol)
+          val applied =
+            if typeArgs.nonEmpty then ref.appliedToTypes(typeArgs)
+            else ref
+          paramName -> applied.asExpr
+        case None =>
+          paramName -> '{ null }.asExprOf[Any]
+      end match
+    }.toMap
+  end extractDefaultValues
+
   private final case class Hints(
       name: Option[String] = None,
       short: Option[String] = None,
@@ -42,7 +92,8 @@ private[decline_derive] object Macros:
       flag: Option[Boolean] = None,
       positional: Option[String] = None,
       env: Option[(String, String)] = None,
-      debug: Boolean = false
+      debug: Boolean = false,
+      defaultValue: Option[Expr[Any]] = None
   )
 
   private given FromExpr[Name] with
@@ -214,6 +265,9 @@ private[decline_derive] object Macros:
               .annotations
           )
 
+        // Extract default values for parameters
+        val defaultValues = extractDefaultValues[T]
+
         val fieldNamesAndAnnotations: List[(String, Hints)] =
           TypeRepr
             .of[T]
@@ -222,10 +276,12 @@ private[decline_derive] object Macros:
             .paramSymss
             .flatten
             .map: sym =>
-              (
-                sym.name,
-                collectArgAnnotations(sym.annotations)
-              )
+              val baseHints = collectArgAnnotations(sym.annotations)
+              val hintsWithDefault = defaultValues.get(sym.name) match
+                case Some(defaultExpr) =>
+                  baseHints.copy(defaultValue = Some(defaultExpr))
+                case None => baseHints
+              (sym.name, hintsWithDefault)
 
         val opts =
           Expr.ofList(fieldOpts[elementTypes](fieldNamesAndAnnotations))
@@ -297,36 +353,68 @@ private[decline_derive] object Macros:
           )
         }
       case '[Boolean] =>
-        hints.flag match
-          case None | Some(false) =>
-            '{
-              Opts
-                .flag(
-                  long = $nm,
-                  help = $help,
-                  short = $short
-                )
-                .orFalse
-            }
-          case _ =>
-            '{
-              Opts
-                .flag(
-                  long = $nm,
-                  help = $help,
-                  short = $short
-                )
-                .orTrue
-            }
-        end match
+        // Determine the default value for boolean flags
+        val defaultBool = hints.defaultValue match
+          case Some(defaultExpr) =>
+            // If there's an explicit default value, use it
+            // Some(defaultExpr.asExprOf[Boolean])
+            '{ Option($defaultExpr.asInstanceOf[Boolean]) }
+          case None =>
+            // Otherwise use the Flag annotation or fallback to orFalse
+            '{ None }
+
+        val base = '{
+          Opts
+            .flag(
+              long = $nm,
+              help = $help,
+              short = $short
+            )
+        }
+
+        if hints.flag.nonEmpty && hints.defaultValue.nonEmpty then
+          report.warning(
+            s"Parameter $name has both @Flag(...) and the default value set – the @Flag annotation will be ignored"
+          )
+
+        val flg = Expr(hints.flag)
+
+        '{
+          val flgDefault = $flg.getOrElse(false)
+          val paramDefault = $defaultBool
+
+          paramDefault match
+            case Some(true) =>
+              $base.orTrue
+            case Some(false) =>
+              $base.orFalse
+            case None =>
+              if flgDefault then $base.orTrue
+              else $base.orFalse
+          end match
+
+        }
 
       case '[Option[e]] =>
-        '{ ${ constructOption[e](name, hints) }.orNone }
+        hints.defaultValue match
+          case None =>
+            '{
+              ${
+                constructOption[e](name, hints.copy(defaultValue = None))
+              }.orNone
+            }
+          case Some(defaultExpr) =>
+            // If there's a default value for Option[e], wrap the inner type's parser and apply the default
+            '{
+              ${ constructOption[e](name, hints.copy(defaultValue = None)) }
+                .map(Some(_))
+                .orElse(Opts($defaultExpr.asInstanceOf[Option[e]]))
+            }
 
       case '[NonEmptyList[e]] =>
         val param = summonArgument[e](name)
 
-        hints.positional match
+        val base = hints.positional match
           case None =>
             '{
               given Argument[e] = $param
@@ -343,7 +431,9 @@ private[decline_derive] object Macros:
               Opts.arguments[e](metavar = $metavar)
             }
 
-        end match
+        hints.defaultValue match
+          case Some(value) => '{ $base.withDefault($value.asInstanceOf) }
+          case None        => base
 
       case '[List[e]] =>
         '{
@@ -395,7 +485,7 @@ private[decline_derive] object Macros:
             '{ Opts.argument[E](metavar = $metaver)(using $param) }
         end base
 
-        hints.env match
+        val withEnv = hints.env match
           case None =>
             base
           case Some((name, help)) =>
@@ -405,6 +495,15 @@ private[decline_derive] object Macros:
               $base.orElse(
                 Opts.env[E](name = $envName, help = $envHelp)(using $param)
               )
+            }
+        end withEnv
+
+        hints.defaultValue match
+          case None =>
+            withEnv
+          case Some(defaultExpr) =>
+            '{
+              $withEnv.withDefault($defaultExpr.asInstanceOf[E])
             }
         end match
       case _ =>
