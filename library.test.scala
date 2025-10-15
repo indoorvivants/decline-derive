@@ -234,6 +234,90 @@ class Tests extends FunSuite:
       "nope"
     )
 
+  test("default values: basic types"):
+    case class Cmd(location: String = "default-location", count: Int = 42)
+        derives CommandApplication
+
+    // Test with no arguments - should use defaults
+    assertArgs(Cmd("default-location", 42))()
+
+    // Test with partial arguments
+    assertArgs(Cmd("custom", 42))("--location", "custom")
+    assertArgs(Cmd("default-location", 100))("--count", "100")
+
+    // Test with all arguments
+    assertArgs(Cmd("custom", 100))(
+      "--location",
+      "custom",
+      "--count",
+      "100"
+    )
+
+  test("default values: boolean flags"):
+    case class Cmd(verbose: Boolean = true, quiet: Boolean = false)
+        derives CommandApplication
+
+    // Test with no arguments - should use defaults
+    assertArgs(Cmd(true, false))()
+
+    // Test with flags provided - flags toggle the default value
+    assertArgs(Cmd(true, true))(
+      "--quiet"
+    ) // quiet defaults to false, --quiet toggles to true
+    assertArgs(Cmd(false, false))(
+      "--verbose"
+    ) // verbose defaults to true, --verbose toggles to false
+
+  test(
+    "default values: warns on boolean flags with annotation and default (and favours default)"
+  ):
+    case class Cmd(@Flag(false) verbose: Boolean = true)
+        derives CommandApplication
+
+    // Test with no arguments - should prefer default parameter value
+    assertArgs(Cmd(true))()
+
+    // Test with flag set - should prefer default parameter value
+    assertArgs(Cmd(false))("--verbose")
+
+  test("default values: optional with defaults"):
+    case class Cmd(location: Option[String] = Some("default"))
+        derives CommandApplication
+
+    // Test with no arguments - should use default
+    assertArgs[Cmd](Cmd(Some("default")))()
+
+    // Test with explicit value
+    assertArgs[Cmd](Cmd(Some("custom")))("--location", "custom")
+
+  test("default values: mixed with and without defaults"):
+    case class Cmd(
+        required: String,
+        optional: String = "default",
+        count: Int = 10
+    ) derives CommandApplication
+
+    // Test with only required argument
+    assertArgs[Cmd](Cmd("req", "default", 10))("--required", "req")
+
+    // Test with required and one optional
+    assertArgs[Cmd](Cmd("req", "custom", 10))(
+      "--required",
+      "req",
+      "--optional",
+      "custom"
+    )
+
+    // Test with all arguments
+    assertArgs[Cmd](Cmd("req", "custom", 25))(
+      "--required",
+      "req",
+      "--optional",
+      "custom",
+      "--count",
+      "25"
+    )
+
   private def assertArgs[T: CommandApplication](
       res: T,
       env: Map[String, String] = Map.empty
