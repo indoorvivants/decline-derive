@@ -40,6 +40,11 @@ enum CLI derives CommandApplication:
 
 @main def helloDecline(args: String*) =
     println(CommandApplication.parse[CLI](args))
+
+// Alternatively
+object App extends CommandApplication.Main[CLI]:
+  override def run(args: CLI) = 
+    println(args)
 ```
 
 Notice how we're using `@Name("lit")` to customise certain aspects of

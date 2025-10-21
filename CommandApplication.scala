@@ -10,6 +10,13 @@ trait CommandApplication[T]:
 
 object CommandApplication:
 
+  trait Main[T: CommandApplication]:
+    def run(args: T): Unit
+
+    final def main(args: Array[String]): Unit  = 
+      run(CommandApplication.parseOrExit[T](args, sys.env))
+
+
   inline def derived[T](using Mirror.Of[T]): CommandApplication[T] =
     ${ Macros.derivedMacro[T] }
 

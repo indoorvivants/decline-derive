@@ -309,10 +309,10 @@ class Tests extends FunSuite:
     ) derives CommandApplication
 
     // Test with only required argument
-    assertArgs[Cmd](Cmd("req", "default", 10))("--required", "req")
+    assertArgs(Cmd("req", "default", 10))("--required", "req")
 
     // Test with required and one optional
-    assertArgs[Cmd](Cmd("req", "custom", 10))(
+    assertArgs(Cmd("req", "custom", 10))(
       "--required",
       "req",
       "--optional",
@@ -320,13 +320,28 @@ class Tests extends FunSuite:
     )
 
     // Test with all arguments
-    assertArgs[Cmd](Cmd("req", "custom", 25))(
+    assertArgs(Cmd("req", "custom", 25))(
       "--required",
       "req",
       "--optional",
       "custom",
       "--count",
       "25"
+    )
+
+  test("case class composition"):
+    case class HttpConfig(host: String = "localhost", port: Int = 80)
+        derives CommandApplication
+    case class Cmd(http: HttpConfig, y: Int = 15) derives CommandApplication
+
+    assertNoArgs(Cmd(HttpConfig()))
+    assertArgs(Cmd(HttpConfig("0.0.0.0", 8080), 500))(
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8080",
+      "--y",
+      "500"
     )
 
   private def assertArgs[T: CommandApplication](
