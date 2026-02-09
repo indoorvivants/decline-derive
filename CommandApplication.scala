@@ -13,9 +13,9 @@ object CommandApplication:
   trait Main[T: CommandApplication]:
     def run(args: T): Unit
 
-    final def main(args: Array[String]): Unit  = 
+    final def main(args: Array[String]): Unit =
       run(CommandApplication.parseOrExit[T](args, sys.env))
-
+  end Main
 
   inline def derived[T](using Mirror.Of[T]): CommandApplication[T] =
     ${ Macros.derivedMacro[T] }
@@ -32,7 +32,10 @@ object CommandApplication:
   /** Parse the command line arguments and the environment variables, but exit
     * the program if either `--help` flag is passed (exit code 0, help printed
     * to stderr), or an error was encountered (exit code -1). Note that by
-    * default `sys.env` is used as default value for @env parameter
+    * default `sys.env` is used as default value for @env parameter.
+    *
+    * The help will be printed out using colors, unless NO_COLORS is set in the
+    * environment.
     */
   inline def parseOrExit[T: CommandApplication](
       args: Seq[String],
@@ -41,7 +44,8 @@ object CommandApplication:
   ): T =
     summon[CommandApplication[T]].command.parse(args, env) match
       case Left(value) =>
-        if printHelp then System.err.println(value)
+        if printHelp then
+          System.err.println(value.render(HelpFormat.autoColors(env)))
         if value.errors.nonEmpty then sys.exit(-1) else sys.exit(0)
       case Right(value) =>
         value

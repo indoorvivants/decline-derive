@@ -3,7 +3,7 @@
 //> using nativeVersion 0.5.9
 //> using jsVersion 1.20.1
 //> using options -Wunused:all
-//> using dependency com.monovore::decline::2.5.0
+//> using dependency com.monovore::decline::2.6.0
 
 //> using publish.computeVersion git:tag
 //> using publish.developers "velvetbaldmime|Anton Sviridov|https://indoorvivants.com"
@@ -17,4 +17,4 @@
 //> using publish.vcs github:indoorvivants/decline-derive
 
 // Test
-//> using test.dependency org.scalameta::munit::1.2.1
+//> using test.dependency org.scalameta::munit::1.2.2
