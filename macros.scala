@@ -336,7 +336,6 @@ private[decline_derive] object Macros:
       case _: ImplicitSearchSuccess => true
       case _                        => false
 
-
     val hasCommand = Implicits.search(TypeRepr.of[CommandApplication[E]]) match
       case res: ImplicitSearchSuccess =>
         Some(res.tree.asExprOf[CommandApplication[E]])
@@ -360,7 +359,7 @@ private[decline_derive] object Macros:
 
       case '[e] if isCaseClass && hasCommand.isDefined =>
         '{
-          ${hasCommand.get}.command.options
+          ${ hasCommand.get }.command.options
         }
       case '[Boolean] =>
         // Determine the default value for boolean flags
