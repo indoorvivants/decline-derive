@@ -45,7 +45,16 @@ object CommandApplication:
     summon[CommandApplication[T]].command.parse(args, env) match
       case Left(value) =>
         if printHelp then
-          System.err.println(value.render(HelpFormat.autoColors(env)))
+          System.err.println(
+            value.render(
+              // We manually implement auto colors until Decline 2.6.1 is released:
+              // https://github.com/bkirwi/decline/pull/645
+              HelpFormat.Colors.withColors(
+                env.get("NO_COLOR").map(_ => false).getOrElse(true)
+              )
+            )
+          )
+        end if
         if value.errors.nonEmpty then sys.exit(-1) else sys.exit(0)
       case Right(value) =>
         value

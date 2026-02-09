@@ -1,9 +1,10 @@
 // Main
 //> using scala 3.3.7
-//> using nativeVersion 0.5.9
+//> using nativeVersion 0.5.10
 //> using jsVersion 1.20.1
 //> using options -Wunused:all
 //> using dependency com.monovore::decline::2.6.0
+//> using platform jvm js native
 
 //> using publish.computeVersion git:tag
 //> using publish.developers "velvetbaldmime|Anton Sviridov|https://indoorvivants.com"
